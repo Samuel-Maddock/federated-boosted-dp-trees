@@ -1,5 +1,18 @@
 # Code for "Federated Boosted Decision Trees with Differential Privacy"
 
+This repository contains code for the ACM CCS'22 paper ["Federated Boosted Decision Trees with Differential Privacy"](https://arxiv.org/abs/2210.02910)
+## Reference
+
+If the code and/or paper contained in this repository were useful to you please consider citing this [work](https://arxiv.org/abs/2210.02910):
+```
+@article{maddock2022federated,
+  title={Federated Boosted Decision Trees with Differential Privacy},
+  author={Maddock, Samuel and Cormode, Graham and Wang, Tianhao and Maple, Carsten and Jha, Somesh},
+  journal={arXiv preprint arXiv:2210.02910},
+  year={2022}
+}
+```
+
 ## Outline
 
 The code is split into two components
