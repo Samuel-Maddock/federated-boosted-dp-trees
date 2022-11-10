@@ -4,12 +4,17 @@ This repository contains code for the ACM CCS'22 paper ["Federated Boosted Decis
 ## Reference
 
 If the code and/or paper contained in this repository were useful to you please consider citing this [work](https://arxiv.org/abs/2210.02910):
-```
-@article{maddock2022federated,
-  title={Federated Boosted Decision Trees with Differential Privacy},
-  author={Maddock, Samuel and Cormode, Graham and Wang, Tianhao and Maple, Carsten and Jha, Somesh},
-  journal={arXiv preprint arXiv:2210.02910},
-  year={2022}
+```bibtex
+@inproceedings{maddock2022federated,
+  author = {Maddock, Samuel and Cormode, Graham and Wang, Tianhao and Maple, Carsten and Jha, Somesh}, 
+  title = {Federated Boosted Decision Trees with Differential Privacy}, 
+  year = {2022}, 
+  isbn = {9781450394505}, 
+  publisher = {Association for Computing Machinery}, 
+  booktitle = {Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security}, 
+  address = {New York, NY, USA}, url = {https://doi.org/10.1145/3548606.3560687}, doi = {10.1145/3548606.3560687}, 
+  pages = {2249–2263}, 
+  location = {Los Angeles, CA, USA}, series = {CCS '22} 
 }
 ```
 
