@@ -12,3 +12,4 @@ statsmodels~=0.13.1
 six~=1.16.0
 progressbar~=2.5
 autodp~=0.2
+fast_histogram~=0.11
