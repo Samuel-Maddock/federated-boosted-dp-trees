@@ -126,6 +126,9 @@ class TreeBase(ABC):
         if self.task_type == consts.CLASSIFICATION:
             pred = self.loss.predict(pred)
         return pred
+    
+    def predict_proba(self, X):
+        return np.array([[1-p, p] for p in self.predict_prob((X))])
 
     def _reset_tracking_attributes(self, checkpoint):
         return
