@@ -38,7 +38,7 @@ class PrivateGBDT(TreeBase):
                  split_method="hist_based", weight_update_method="xgboost", training_method="boosting", batched_update_size=1, # training method params
                  feature_interaction_method="", feature_interaction_k=None, full_ebm=False, # feature interaction params
                  early_stopping=None, es_metric=None, es_threshold=-5, es_window=3, # early stopping
-                 track_budget=True, split_method_per_level=None, hist_estimator_method=None, sigma=None, verbose=False, output_train_monitor=True):
+                 track_budget=True, split_method_per_level=None, hist_estimator_method=None, sigma=None, verbose=False, output_train_monitor=False):
 
         super(PrivateGBDT, self).__init__(min_samples_split=min_samples_split, max_depth=max_depth, task_type=task_type)
         self.output_train_monitor = output_train_monitor
