@@ -276,9 +276,10 @@ class DataLoader():
     def load_datasets(self, data_list, remove_missing=False, return_dict=False, verbose=False):
         test_size = 0.3
         data_dict = {}
-
+        new_names = []
         for dataset_name in data_list:
             for seed in self.seeds:
+                new_names.append(f"{dataset_name}_{str(seed)}")
                 # Credit 1
                 if dataset_name == "Credit 1":
                     self._load_credit1(data_dict, seed, test_size, remove_missing, verbose)
@@ -362,4 +363,4 @@ class DataLoader():
         if return_dict:
             return data_dict
         else:
-            return [data_dict[dataset] for dataset in data_list]
+            return [data_dict[dataset] for dataset in new_names]
