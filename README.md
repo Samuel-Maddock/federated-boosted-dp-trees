@@ -18,16 +18,37 @@ If the code and/or paper contained in this repository were useful to you please 
 }
 ```
 
+## Installation
+
+The simplest way to install an environment for this repo is to use conda and `pip install -r ./requirements.txt`
+```commandline
+conda create -n "fedxgb" python=3.9 
+conda activate fedxgb
+pip install -r ./requirements.txt
+```
+
+Alternatively `pip install` the required libraries
+
+```commandline
+pip install pandas seaborn matplotlib scikit-learn numpy xgboost xxhash bitarray scipy numba statsmodels six progressbar autodp fast_histogram notebook pmlb
+```
+
+### Datasets
+
+Datasets need to be downloaded and placed in the `data` directory in the root of the repo. We use the following datasets in our experiments:
+* [Credit 1](https://www.kaggle.com/datasets/uciml/default-of-credit-card-clients-dataset) - should be placed under `data/Kaggle Credit 1/credit1-training.csv`
+* [Credit 2](https://www.kaggle.com/competitions/GiveMeSomeCredit/data?select=cs-test.csv) - should be placed under `data/UCI Credit 2/UCI_Credit_Card.csv`
+* [Adult](https://archive.ics.uci.edu/ml/datasets/adult) - should be placed under `data/UCI Adult/adult.data`
+* [Bank](https://archive.ics.uci.edu/ml/datasets/bank+marketing) - should be placed under `data/UCI Bank Marketing/bank-full.csv`
+* [Nomao](https://archive.ics.uci.edu/ml/datasets/Nomao) - should be placed under `data/UCI Nomao/Nomao.data`
+* [Higgs](https://archive.ics.uci.edu/ml/datasets/HIGGS) - The Higgs dataset should be subsampled to n=200,000 samples and placed under `data/UCI Higgs/higgs-200k.csv`
+
+
 ## Outline
 
 The code is split into two components
 * `experiments` - Main code for running and plotting experiments
 * `federated_gbdt` - Main code for the private GBDT model
-
-In order to run any of the code, datasets need to be downloaded and placed in the `data` directory. We use the following datasets in our experiments:
-[Credit 1](https://www.kaggle.com/datasets/uciml/default-of-credit-card-clients-dataset), [Credit 2](https://www.kaggle.com/competitions/GiveMeSomeCredit/data?select=cs-test.csv), [Adult](https://archive.ics.uci.edu/ml/datasets/adult), [Bank](https://archive.ics.uci.edu/ml/datasets/bank+marketing), [Nomao](https://archive.ics.uci.edu/ml/datasets/Nomao), [Higgs](https://archive.ics.uci.edu/ml/datasets/HIGGS) 
-
-<!--- For ease of replication you can download the full data folder from [here](todo) (approx 300mb) and place it in the root directory of the repo. The Higgs dataset has been subsampled to n=200,000. --->
 
 In order to generate plots and tables as in the paper see "Paper Experiments, Plots and Tables"
 
