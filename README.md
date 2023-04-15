@@ -36,8 +36,8 @@ pip install pandas seaborn matplotlib scikit-learn numpy xgboost xxhash bitarray
 ### Datasets
 
 Datasets need to be downloaded and placed in the `data` directory in the root of the repo. We use the following datasets in our experiments:
-* [Credit 1](https://www.kaggle.com/datasets/uciml/default-of-credit-card-clients-dataset) - should be placed under `data/Kaggle Credit 1/credit1-training.csv`
-* [Credit 2](https://www.kaggle.com/competitions/GiveMeSomeCredit/data?select=cs-test.csv) - should be placed under `data/UCI Credit 2/UCI_Credit_Card.csv`
+* [Credit 1](https://www.kaggle.com/competitions/GiveMeSomeCredit/data?select=cs-test.csv) - should be placed under `data/Kaggle Credit 1/credit1-training.csv`
+* [Credit 2](https://www.kaggle.com/datasets/uciml/default-of-credit-card-clients-dataset) - should be placed under `data/UCI Credit 2/UCI_Credit_Card.csv`
 * [Adult](https://archive.ics.uci.edu/ml/datasets/adult) - should be placed under `data/UCI Adult/adult.data`
 * [Bank](https://archive.ics.uci.edu/ml/datasets/bank+marketing) - should be placed under `data/UCI Bank Marketing/bank-full.csv`
 * [Nomao](https://archive.ics.uci.edu/ml/datasets/Nomao) - should be placed under `data/UCI Nomao/Nomao.data`
