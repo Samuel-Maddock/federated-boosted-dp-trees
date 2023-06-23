@@ -104,12 +104,10 @@ class SplitCandidateManager():
             for j in range(0, X.shape[1]):
                 max_val = np.nanmax(X[:, j]) * self.range_multiplier
                 min_val = np.nanmin(X[:, j])
-                if min_val < 0:
-                    min_val *= self.range_multiplier
-                elif min_val == 0:
-                    min_val = -min_val * self.range_multiplier
+                if min_val <= 0:
+                    min_val = min_val * self.range_multiplier
                 else:
-                    min_val *= -self.range_multiplier
+                    min_val = min_val / self.range_multiplier
 
                 if self.sketch_type == "exact_quantiles":
                     quantiles = np.nanquantile(X[:, j], q=np.arange(0,1, 1/self.num_candidates), interpolation='linear')
