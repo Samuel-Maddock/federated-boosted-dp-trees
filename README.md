@@ -82,6 +82,7 @@ The code structure of `federated_gbdt` is as follows
 
 All experiments were run with 15 iterations in total (3 iterations over 5 different train-test sets). Code for running experiments is in `experiments/paper_experiments/paper_experiments.py` and plotting in `experiments/paper_experiments/paper_plotter.py`
 
+### Running paper experiments
 The following methods in `paper_experiments.py` corresponds to the following figures/tables in the paper:
 * `dp_split_methods_with_update_methods` - Corresponds to Figure 1 (a,b,c), Table 2 in main text, Figures 7-10 and Table 7-10 in the Appendix
 * `dp_split_candidate_methods` - Corresponds to Figure 2 (a,b,c) and Table 3 in the main text, Figure 11 and 12 in the Appendix
@@ -90,7 +91,14 @@ The following methods in `paper_experiments.py` corresponds to the following fig
 * `batched_boosting` -  Corresponds to Figure 5, Table 4 in the main text, Figure 13 in the Appendix
 * `comparisons_experiment` - Corresponds to Figure 6 in the main text and Figures 14-18 in the Appendix
 
-The associated figures are already generated and present in `experiments/paper_experiments/paper_plots`. To recreate them the following methods in `experiment_plotter.py` can be used:
+
+### Generating paper plots
+
+Paper figures are already generated and present in `experiments/paper_experiments/paper_plots`. 
+
+To recreate paper plots download the paper results from [here](https://drive.google.com/file/d/1u7BFhEP7e2sqxfr3vAd92hrOJaV_sZI7/view?usp=sharing) and place them in `experiments/paper_experiments/paper_results/` 
+
+The following methods in `experiment_plotter.py` can be used to plot results:
 * `plot_split_methods_with_update` - Figure 1(a,b,c)
 * `plot_split_candidates` - Figure 2(a,b,c)
 * `plot_k_way` - Figure 3
@@ -111,12 +119,10 @@ Plots and tables for the Appendix can be recreated via the following (although t
 
 ## Replication Instructions
 
-As mentioned above all plots and figures from the main paper and appendix can be replicated from the .csv files by running the appropriate methods in `paper_plotter.py`
-
 As all experiments in the paper are repeated over 15 iterations they are usually too slow to replicate within a reasonable amount of time. 
-Instead, to roughly replicate an experiment from scratch additional code is provided in `experiments/replication_experiments` and in particular the `experiment_replicator.py` file
+Instead, to approximately replicate an experiment from scratch additional code is provided in `experiments/replication_experiments`
 
-This contains an `ExperimentReplicator` class with a `replicate(figure_num)` method. Most replication experiments have been designed to run on the Credit 1 dataset in ~30 minutes depending on the device. Most run on a single test-train seed over 3 iterations.
+Most replication experiments have been designed to run on the Credit 1 dataset in ~30 minutes depending on the device. Most run on a single test-train seed over 3 iterations.
 
 The `experiments/replication_experiments` folder already contains data and replication figures for all 6 figures presented in the main paper.
 You can also generate appendix figures by changing the dataset that is passed to `ExperimentReplicator.replicate`
