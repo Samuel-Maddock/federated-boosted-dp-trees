@@ -202,9 +202,9 @@ class DataLoader():
             self.print_data_info("Higgs", higgs_X, higgs_y)
 
         if load_sampled:
-            data_dict["higgs-sample"+"_"+str(seed)] = higgs_data
+            data_dict[f"higgs_sampled_{str(seed)}"] = higgs_data
         else:
-            data_dict["higgs"+"_"+str(seed)] = higgs_data
+            data_dict[f"higgs_{str(seed)}"] = higgs_data
 
     def _load_diabetes(self, data_dict, seed, test_size, remove_missing, verbose):
         diabetes_df = pd.read_csv(data_path + "UCI Diabetes130US/diabetic_data.csv")
