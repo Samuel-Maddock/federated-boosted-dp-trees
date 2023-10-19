@@ -323,14 +323,19 @@ class PrivateGBDT(TreeBase):
         if self.batched_update_size < 1:
             self.batched_update_size = int(self.batched_update_size * self.num_trees)
 
-        y = y if not isinstance(y, pd.Series) else y.values
-        self.num_classes = len(np.unique(y))
+        train_y = y if not isinstance(y, pd.Series) else y.values
+        self.num_classes = len(np.unique(train_y))
+        self.K = 1
+        # TODO: For now, multi-class defaults to K one-vs-all trees
+        if self.num_classes > 2:
+            self.K = self.num_classes
+            self.num_classes = 2
         self.train_monitor.set_num_classes(self.num_classes)
 
         self.train_monitor.start_timing_event("server", "initialise model weights")
         if self.num_classes > 2:
             self.loss = SoftmaxCrossEntropyLoss()
-            y = LabelBinarizer().fit_transform(y)
+            train_y = LabelBinarizer().fit_transform(train_y)
             self.train_monitor.y_weights = np.full((X.shape[0], self.num_classes), 1/self.num_classes,)
             self.train_monitor.current_tree_weights = np.zeros((X.shape[0], self.num_classes))
         else:
@@ -341,6 +346,7 @@ class PrivateGBDT(TreeBase):
 
         # Initialise Gaussian DP parameters
         if "gaussian" in self.dp_method:
+            self.privacy_accountant.epsilon /= self.K
             self.privacy_accountant.assign_budget(self.privacy_accountant.epsilon, 1 / X.shape[0], num_rows=X.shape[0], num_features=X.shape[1]) # Update delta to 1/n
 
         self.train_monitor.end_timing_event("server", "initialise model weights")
@@ -355,112 +361,121 @@ class PrivateGBDT(TreeBase):
         self.feature_bin = np.array(self.feature_bin)
         features = np.array(range(0, self.num_features))
         previous_rounds_features = None
+        
+        for k in range(0, self.K):
+            y = train_y.copy()
+            if self.K > 2:
+                # one-vs-all for class k
+                y = (y == k).astype(int)
+                
+            for i in range(0, self.num_trees):
+                self.train_monitor.node_count = -1 # Reset node count for new trees
 
-        for i in range(0, self.num_trees):
-            self.train_monitor.node_count = -1 # Reset node count for new trees
+                if self.split_candidate_manager.sketch_each_tree:
+                    if self.split_candidate_manager.sketch_type == "adaptive_hessian" and len(self.trees) >= self.split_candidate_manager.sketch_rounds:
+                        pass
+                    else:
+                        features_updated = previous_rounds_features if previous_rounds_features is not None else list(range(0, self.num_features))
+                        self.train_monitor.start_timing_event("server", f"split_candidates")
+                        self.split_candidate_manager.find_split_candidates(X, len(self.trees), self.root_hessian_histogram, features_considering=features_updated)
+                        self.train_monitor.end_timing_event("server", f"split_candidates")
 
-            if self.split_candidate_manager.sketch_each_tree:
-                if self.split_candidate_manager.sketch_type == "adaptive_hessian" and len(self.trees) >= self.split_candidate_manager.sketch_rounds:
-                    pass
-                else:
-                    features_updated = previous_rounds_features if previous_rounds_features is not None else list(range(0, self.num_features))
-                    self.train_monitor.start_timing_event("server", f"split_candidates")
-                    self.split_candidate_manager.find_split_candidates(X, len(self.trees), self.root_hessian_histogram, features_considering=features_updated)
-                    self.train_monitor.end_timing_event("server", f"split_candidates")
+                        self.train_monitor.start_timing_event("client", "histogram building")
+                        for j in features_updated:
+                            self.feature_bin[j] = np.digitize(self.X[:, j], bins=[-np.inf] + list(np.array(self.split_candidate_manager.feature_split_candidates[j]) + 1e-11) + [np.inf])
+                        self.train_monitor.end_timing_event("client", "histogram building")
 
-                    self.train_monitor.start_timing_event("client", "histogram building")
-                    for j in features_updated:
-                        self.feature_bin[j] = np.digitize(self.X[:, j], bins=[-np.inf] + list(np.array(self.split_candidate_manager.feature_split_candidates[j]) + 1e-11) + [np.inf])
-                    self.train_monitor.end_timing_event("client", "histogram building")
+                        # TODO: Track here for communication (split candidates)
+                        self.train_monitor.update_received(range(0, X.shape[0]), 8*len(features_updated)*len(self.split_candidate_manager.feature_split_candidates[0]))
 
-                    # TODO: Track here for communication (split candidates)
-                    self.train_monitor.update_received(range(0, X.shape[0]), 8*len(features_updated)*len(self.split_candidate_manager.feature_split_candidates[0]))
+                self.train_monitor.start_timing_event("server", "pre-tree ops")
 
-            self.train_monitor.start_timing_event("server", "pre-tree ops")
+                # Row and Feature Sampling if enabled
+                row_sample, col_tree_sample, col_level_sample = self.index_sampler.sample(i, X.shape[0], X.shape[1], self.max_depth, feature_interaction_k=self.feature_interaction_k, feature_interaction_method=self.feature_interaction_method)
+                previous_rounds_features = col_tree_sample
+                split_constraints = {i : [0, len(self.split_candidate_manager.feature_split_candidates[i])+1] for i in range(0,self.num_features)}
 
-            # Row and Feature Sampling if enabled
-            row_sample, col_tree_sample, col_level_sample = self.index_sampler.sample(i, X.shape[0], X.shape[1], self.max_depth, feature_interaction_k=self.feature_interaction_k, feature_interaction_method=self.feature_interaction_method)
-            previous_rounds_features = col_tree_sample
-            split_constraints = {i : [0, len(self.split_candidate_manager.feature_split_candidates[i])+1] for i in range(0,self.num_features)}
+                if i != 0:
+                    self.privacy_accountant.update_tree() # Increment tree count in privacy_accountant, used to index tree_budgets
+                self.train_monitor.end_timing_event("server", "pre-tree ops")
 
-            if i != 0:
-                self.privacy_accountant.update_tree() # Increment tree count in privacy_accountant, used to index tree_budgets
-            self.train_monitor.end_timing_event("server", "pre-tree ops")
+                if i==0 or self.training_method == "boosting" or (self.training_method == "batched_boosting" and (i % self.batched_update_size == 0)):
+                    if self.training_method == "batched_boosting":
+                        self.train_monitor.y_weights += self.train_monitor.batched_weights / self.batched_update_size
+                        self.train_monitor.batched_weights = np.zeros(self.X.shape[0])
+                        # TODO: Track communication (batched updates)
+                        if i != 0:
+                            self.train_monitor.update_sent(range(0, self.X.shape[0]), 8*2*self.batched_update_size*self.train_monitor.leaf_count_tracker[-1])
 
-            if i==0 or self.training_method == "boosting" or (self.training_method == "batched_boosting" and (i % self.batched_update_size == 0)):
+                    self.train_monitor.start_timing_event("client", f"computing gradients")
+                    grads, hess = self._compute_grad_hessian_with_samples(y, self.loss.predict(self.train_monitor.y_weights)) # Compute raw grads,hess
+                    self.train_monitor.end_timing_event("client", f"computing gradients")
+                    self.train_monitor.gradient_info = [(grads, hess)] # Append to gradient_info, at each node this is retrieved and privatised with DP to calculate feature scores etc
+
+                tree = self._build_tree(features, row_sample, None, None,
+                                        split_constraints=split_constraints, col_tree_sample=col_tree_sample, col_level_sample=col_level_sample, row_ids=np.arange(0,X.shape[0]))
+                self.trees.append(tree) # Build and add tree to ensemble
+
+                self.train_monitor.start_timing_event("server", "post-tree ops")
+
                 if self.training_method == "batched_boosting":
-                    self.train_monitor.y_weights += self.train_monitor.batched_weights / self.batched_update_size
-                    self.train_monitor.batched_weights = np.zeros(self.X.shape[0])
-                    # TODO: Track communication (batched updates)
-                    if i != 0:
+                    self.train_monitor.batched_weights += self.train_monitor.current_tree_weights
+
+                    if i==self.num_trees-1 and (i+1) % self.batched_update_size != 0:
+                        # TODO: Track communication (batched updates)
                         self.train_monitor.update_sent(range(0, self.X.shape[0]), 8*2*self.batched_update_size*self.train_monitor.leaf_count_tracker[-1])
-
-                self.train_monitor.start_timing_event("client", f"computing gradients")
-                grads, hess = self._compute_grad_hessian_with_samples(y, self.loss.predict(self.train_monitor.y_weights)) # Compute raw grads,hess
-                self.train_monitor.end_timing_event("client", f"computing gradients")
-                self.train_monitor.gradient_info = [(grads, hess)] # Append to gradient_info, at each node this is retrieved and privatised with DP to calculate feature scores etc
-
-            tree = self._build_tree(features, row_sample, None, None,
-                                    split_constraints=split_constraints, col_tree_sample=col_tree_sample, col_level_sample=col_level_sample, row_ids=np.arange(0,X.shape[0]))
-            self.trees.append(tree) # Build and add tree to ensemble
-
-            self.train_monitor.start_timing_event("server", "post-tree ops")
-
-            if self.training_method == "batched_boosting":
-                self.train_monitor.batched_weights += self.train_monitor.current_tree_weights
-
-                if i==self.num_trees-1 and (i+1) % self.batched_update_size != 0:
-                    # TODO: Track communication (batched updates)
-                    self.train_monitor.update_sent(range(0, self.X.shape[0]), 8*2*self.batched_update_size*self.train_monitor.leaf_count_tracker[-1])
-                    self.train_monitor.y_weights += self.train_monitor.batched_weights / ((i+1) % self.batched_update_size)
-                elif i==self.num_trees-1:
-                    # TODO: Track communication (batched updates)
-                    self.train_monitor.update_sent(range(0, self.X.shape[0]), 8*2*self.batched_update_size*self.train_monitor.leaf_count_tracker[-1])
-            else:
-                self.train_monitor.y_weights += self.train_monitor.current_tree_weights # Update weights
-
-            self.train_monitor.leaf_gradient_tracker[0].append(self.train_monitor.gradient_total[0])
-            self.train_monitor.leaf_gradient_tracker[1].append(self.train_monitor.gradient_total[1])
-
-            threshold_change = self.es_threshold
-            window = self.es_window
-            if len(self.trees) >= 2*self.es_window and self.early_stopping:
-                if self.es_metric == "leaf_hess":
-                    es_metric = self.train_monitor.leaf_gradient_tracker[1]
-                elif self.es_metric == "leaf_grad":
-                    es_metric = self.train_monitor.leaf_gradient_tracker[0]
-                elif self.es_metric == "root_grad":
-                    es_metric = self.train_monitor.root_gradient_tracker[0]
+                        self.train_monitor.y_weights += self.train_monitor.batched_weights / ((i+1) % self.batched_update_size)
+                    elif i==self.num_trees-1:
+                        # TODO: Track communication (batched updates)
+                        self.train_monitor.update_sent(range(0, self.X.shape[0]), 8*2*self.batched_update_size*self.train_monitor.leaf_count_tracker[-1])
                 else:
-                    es_metric = self.train_monitor.root_gradient_tracker[1]
+                    self.train_monitor.y_weights += self.train_monitor.current_tree_weights # Update weights
 
-                current_window_hess = abs(np.mean(es_metric[-window:])) if "grad" in self.es_metric else np.mean(es_metric[-window:])
-                previous_window_hess = abs(np.mean(es_metric[-2*window:-window])) if "grad" in self.es_metric else np.mean(es_metric[-2*window:-window])
-                per_change = (previous_window_hess/current_window_hess-1)*100
+                self.train_monitor.leaf_gradient_tracker[0].append(self.train_monitor.gradient_total[0])
+                self.train_monitor.leaf_gradient_tracker[1].append(self.train_monitor.gradient_total[1])
 
-                if ("standard" in self.early_stopping or self.early_stopping == "rollback" or "average" in self.early_stopping) and per_change < threshold_change:
-                    print("Early Stopping at round", i+1)
-                    if self.early_stopping == "rollback":
-                        self.trees = self.trees[:-1]
-                        self.train_monitor.y_weights -= self.train_monitor.current_tree_weights
-                    break
-                elif self.early_stopping == "retry" and per_change < threshold_change: #es_metric[-2] - es_metric[-1] < 0
-                    prune_step = -2 if "root" in self.es_metric else -1
+                threshold_change = self.es_threshold
+                window = self.es_window
+                if len(self.trees) >= 2*self.es_window and self.early_stopping:
+                    if self.es_metric == "leaf_hess":
+                        es_metric = self.train_monitor.leaf_gradient_tracker[1]
+                    elif self.es_metric == "leaf_grad":
+                        es_metric = self.train_monitor.leaf_gradient_tracker[0]
+                    elif self.es_metric == "root_grad":
+                        es_metric = self.train_monitor.root_gradient_tracker[0]
+                    else:
+                        es_metric = self.train_monitor.root_gradient_tracker[1]
 
-                    self.trees = self.trees[:prune_step]
-                    self.train_monitor.gradient_info = self.train_monitor.gradient_info[:prune_step]
-                    self.train_monitor.root_gradient_tracker[0] = self.train_monitor.root_gradient_tracker[0][:prune_step]
-                    self.train_monitor.root_gradient_tracker[1] = self.train_monitor.root_gradient_tracker[1][:prune_step]
-                    self.train_monitor.leaf_gradient_tracker[0] = self.train_monitor.leaf_gradient_tracker[0][:prune_step]
-                    self.train_monitor.leaf_gradient_tracker[1] = self.train_monitor.leaf_gradient_tracker[1][:prune_step]
+                    current_window_hess = abs(np.mean(es_metric[-window:])) if "grad" in self.es_metric else np.mean(es_metric[-window:])
+                    previous_window_hess = abs(np.mean(es_metric[-2*window:-window])) if "grad" in self.es_metric else np.mean(es_metric[-2*window:-window])
+                    per_change = (previous_window_hess/current_window_hess-1)*100
 
-                    self.train_monitor.y_weights -= self.train_monitor.current_tree_weights + (prune_step+1)*-1*self.train_monitor.previous_tree_weights # If root then remove 2 trees, if leaf remove 1
+                    if ("standard" in self.early_stopping or self.early_stopping == "rollback" or "average" in self.early_stopping) and per_change < threshold_change:
+                        print("Early Stopping at round", i+1)
+                        if self.early_stopping == "rollback":
+                            self.trees = self.trees[:-1]
+                            self.train_monitor.y_weights -= self.train_monitor.current_tree_weights
+                        break
+                    elif self.early_stopping == "retry" and per_change < threshold_change: #es_metric[-2] - es_metric[-1] < 0
+                        prune_step = -2 if "root" in self.es_metric else -1
 
-            self.train_monitor.end_timing_event("server", "post-tree ops")
+                        self.trees = self.trees[:prune_step]
+                        self.train_monitor.gradient_info = self.train_monitor.gradient_info[:prune_step]
+                        self.train_monitor.root_gradient_tracker[0] = self.train_monitor.root_gradient_tracker[0][:prune_step]
+                        self.train_monitor.root_gradient_tracker[1] = self.train_monitor.root_gradient_tracker[1][:prune_step]
+                        self.train_monitor.leaf_gradient_tracker[0] = self.train_monitor.leaf_gradient_tracker[0][:prune_step]
+                        self.train_monitor.leaf_gradient_tracker[1] = self.train_monitor.leaf_gradient_tracker[1][:prune_step]
 
-            # Reset tracking vars
-            self.train_monitor._update_comm_stats(self.split_method, self.training_method)
-            self.train_monitor.reset()
+                        self.train_monitor.y_weights -= self.train_monitor.current_tree_weights + (prune_step+1)*-1*self.train_monitor.previous_tree_weights # If root then remove 2 trees, if leaf remove 1
+
+                self.train_monitor.end_timing_event("server", "post-tree ops")
+                                
+                # Reset tracking vars
+                self.train_monitor._update_comm_stats(self.split_method, self.training_method)
+                self.train_monitor.reset()
+            self.multiclass_trees[k] = self.trees
+            self.trees = []
+            
 
         if self.early_stopping and "retrain" in self.early_stopping and len(self.trees) < self.num_trees:
             # Calculate new budget
@@ -490,10 +505,8 @@ class PrivateGBDT(TreeBase):
 
                 return self
 
-        self.root = self.trees[0]
-
-        if self.training_method == "rf":
-            self.train_monitor.y_weights /= len(self.trees)
+        # Root is first tree of first class - not used, debugging
+        self.root = self.multiclass_trees[0][0]
 
         if self.verbose:
             print("Number of trees trained", len(self.trees))
@@ -503,7 +516,9 @@ class PrivateGBDT(TreeBase):
                 print("\n[Ledger] Average number of queries done by a participant :", np.mean(self.privacy_accountant.ledger)/scale_factor)
                 print("[Ledger] Minimum queries done by a participant:", np.min(self.privacy_accountant.ledger)/scale_factor)
                 print("[Ledger] Maximum queries done by a participant:", np.max(self.privacy_accountant.ledger)/scale_factor, "\n")
-
+        
+        if self.training_method == "rf":
+            self.train_monitor.y_weights /= len(self.trees)
         self.y_weights = self.train_monitor.y_weights
         if self.output_train_monitor:
             print(f"Size of dataset n,m={self.X.shape}")

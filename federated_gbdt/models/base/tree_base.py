@@ -4,19 +4,27 @@ from abc import ABC, abstractmethod
 import pandas
 from sklearn.metrics import roc_auc_score, accuracy_score
 import _pickle as pickle
+from federated_gbdt.core.loss_functions import SoftmaxCrossEntropyLoss
+
 
 class TreeBase(ABC):
-    def __init__(self, min_samples_split=2,
-                 max_depth=3, task_type=consts.CLASSIFICATION,
-                 num_classes=-1):
+    def __init__(
+        self,
+        min_samples_split=2,
+        max_depth=3,
+        task_type=consts.CLASSIFICATION,
+        num_classes=-1,
+    ):
         self.root = None  # Root node in dec. tree
         self.min_samples_split = min_samples_split
         self.max_depth = max_depth
         self.task_type = task_type
         self.num_classes = num_classes
+        self.K = 2
         self.training_method = "boosting"
         self.batched_update_size = 1
         self.trees = []
+        self.multiclass_trees = {}
         self.loss = None
 
     @abstractmethod
@@ -61,14 +69,14 @@ class TreeBase(ABC):
 
     def predict_over_trees(self, X, y):
         metrics = []
-        for i in range(1, len(self.trees)+1):
+        for i in range(1, len(self.trees) + 1):
             trees = self.trees[:i]
             y_pred = self.loss.predict(self.predict_weight(X, trees))
             auc = roc_auc_score(y, y_pred)
             acc = accuracy_score(y, (y_pred >= 0.5).astype("int"))
-            metrics.append((auc,acc))
-            print("Tree", i, "AUC :", auc )
-            print("Tree", i, "Acc :", acc , "\n")
+            metrics.append((auc, acc))
+            print("Tree", i, "AUC :", auc)
+            print("Tree", i, "Acc :", acc, "\n")
 
         return metrics
 
@@ -82,21 +90,30 @@ class TreeBase(ABC):
         :return: Model prediction as a weight
         """
         X = self._convert_df(X)
-        pred = np.zeros((X.shape[0], self.num_classes)) if self.num_classes > 2 else np.zeros(X.shape[0])
+        pred = (
+            np.zeros((X.shape[0], self.num_classes))
+            if self.num_classes > 2
+            else np.zeros(X.shape[0])
+        )
         trees = tree if tree is not None else self.trees
 
         preds = []
         for i, tree in enumerate(trees):
             pred += self.predict_value(X, tree)
             if self.training_method == "batched_boosting":
-                if (i+1) % self.batched_update_size == 0: # Average current weights and add to preds
+                if (
+                    i + 1
+                ) % self.batched_update_size == 0:  # Average current weights and add to preds
                     pred /= self.batched_update_size
                     preds.append(pred)
                     pred = np.zeros(X.shape[0])
-                elif (i+1) == len(trees):
-                    pred /= (i+1) % self.batched_update_size
+                elif (i + 1) == len(trees):
+                    pred /= (i + 1) % self.batched_update_size
                     preds.append(pred)
-            elif self.early_stopping == "average_retrain" and (i+1) % (len(self.trees)/2) == 0:
+            elif (
+                self.early_stopping == "average_retrain"
+                and (i + 1) % (len(self.trees) / 2) == 0
+            ):
                 preds.append(pred)
 
         if self.training_method == "batched_boosting":
@@ -110,9 +127,9 @@ class TreeBase(ABC):
         return pred
 
     def predict(self, X):
-        """ Classify samples one by one and return the set of labels """
+        """Classify samples one by one and return the set of labels"""
         X = self._convert_df(X)
-        return (self.predict_prob(X) >= 0.5).astype("int")
+        return (np.argmax(self.predict_prob(X), axis=1)).astype("int")
 
     def predict_prob(self, X):
         """
@@ -122,25 +139,36 @@ class TreeBase(ABC):
         :return: A list of probabilities for each observation
         """
         X = self._convert_df(X)
-        pred = self.predict_weight(X)
+        probs = []
+        for k in range(0, self.K):
+            probs.append(self.predict_weight(X, self.multiclass_trees[k]))
+        probs = np.array(list(zip(*probs)))
         if self.task_type == consts.CLASSIFICATION:
-            pred = self.loss.predict(pred)
-        return pred
-    
+            probs = (
+                self.loss.predict(probs)
+                if self.K <= 2
+                else SoftmaxCrossEntropyLoss().predict(probs)
+            )
+        if self.K <= 2:
+            probs = np.array([[1 - p[0], p[0]] for p in probs])
+        return probs
+
     def predict_proba(self, X):
-        return np.array([[1-p, p] for p in self.predict_prob((X))])
+        return self.predict_prob(X)
 
     def _reset_tracking_attributes(self, checkpoint):
         return
 
     def save(self, filename, checkpoint=False):
-        self._reset_tracking_attributes(checkpoint) # Otherwise saved file will be large...
-        f = open(filename+".pkl", 'wb')
+        self._reset_tracking_attributes(
+            checkpoint
+        )  # Otherwise saved file will be large...
+        f = open(filename + ".pkl", "wb")
         pickle.dump(self.__dict__, f, 2)
         f.close()
 
     def load(self, filename):
-        f = open(filename, 'rb')
+        f = open(filename, "rb")
         tmp_dict = pickle.load(f)
         f.close()
 
